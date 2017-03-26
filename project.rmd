@@ -1,0 +1,135 @@
+---
+title: 'Practical Machine Learning Course Project'
+author: "Hon Jia Xuan"
+date: "March 26, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+### Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+### Data
+
+The training data for this project are available here: [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv]
+
+The test data are available here: [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv]
+
+The data for this project come from this source: [http://groupware.les.inf.puc-rio.br/har]. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+### What you should submit
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+Your submission should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you submit a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-).
+You should also apply your machine learning algorithm to the 20 test cases available in the test data above. Please submit your predictions in appropriate format to the programming assignment for automated grading. See the programming assignment for additional details.
+
+
+### Solution
+
+#### Step 0: setup working directory and load libraries
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+pth_str <- "D:/Dropbox/E-books/_Coursera/8_Practical_Machine_Learning/Project"
+setwd(pth_str)
+
+library(dplyr)
+library(caret)
+```
+
+#### Step 1: load trianing and testing dataset
+```{r, echo=TRUE, warning=FALSE}
+
+training_raw <- read.csv("pml-training.csv", header=TRUE, stringsAsFactors=FALSE)
+testing_raw <- read.csv("pml-testing.csv", header=TRUE, stringsAsFactors=FALSE)
+
+# check dimension of the datasets
+dim(training_raw)
+dim(testing_raw)
+```
+
+#### Step 2: Clean up training dataset
+```{r, echo=TRUE, warning=FALSE}
+# make sure both data have the same columns 
+training_col <- names(training_raw)
+testing_col <- names(testing_raw)
+col_not_common <- training_col[!training_col %in% testing_col]
+col_not_common
+# Thus, it looks like the last col from both datasets are different
+```
+
+####  Step 3: for the common columns drop the ones with more than 80% of NA or missing values 
+```{r, echo=TRUE, warning=FALSE}
+select_Col <- !apply(training_raw[,1:159], 2, function(x) sum(is.na(x)) > 0.80  || sum(x=="") > 0.80)
+training_raw1 <- training_raw[, select_Col]
+testing_raw1 <- testing_raw[, select_Col]
+```
+
+####  Step 4: Some variables are irrelevant (columns 1 to 7). So drop those variables.
+```{r, echo=TRUE, warning=FALSE}
+training_raw2 <- training_raw1[,-c(1:7)]
+testing_raw2 <- testing_raw1[,-c(1:7)]
+# drop "problem_id" from the testing dataset and add "classe" Col.
+testing_raw2 <- select(testing_raw2, -problem_id)
+testing_raw2$classe <- NA
+```
+
+
+#### Step 5: Visualize distribution of different classes for training data
+```{r, echo=TRUE, warning=FALSE}
+plot(as.factor(training_raw2$classe), main="Training dataset", xlab="classe levels", ylab="Frequency", ylim=c(0,6000))
+```
+
+####  Step 6: pick 75% percent of the training dataset as training dataset
+```{r, echo=TRUE, warning=FALSE}
+# pick the remining 25% of the training dataset as validation dataset 
+train_index <- createDataPartition(y=training_raw2$classe, p=0.75, list=FALSE)
+
+train_data <- training_raw2[train_index,]
+valida_data <- training_raw2[-train_index,]
+test_data <- testing_raw2
+
+# check dimension of the datasets again
+dim(train_data)
+dim(valida_data)
+dim(test_data)
+```
+
+####  Step 7: Train 4 different models first: random forest, gbm, lda, and bagging
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+# Train model in parallel 
+library(doParallel)
+registerDoParallel(cores = 6)
+mod1 <- train(classe ~ ., data=train_data, method="rf")
+mod2 <- train(classe ~ ., data=train_data, method="gbm", verbose=FALSE)
+mod3 <- train(classe ~ ., data=train_data, method="lda")
+mod4 <- train(classe ~ ., data=train_data, method="treebag")
+
+pred1 <- predict(mod1, valida_data)
+pred2 <- predict(mod2, valida_data)
+pred3 <- predict(mod3, valida_data)
+pred4 <- predict(mod4, valida_data)
+```
+
+####  Step 8: Pick the best performance model based on out-of-sample error
+```{r, echo=TRUE, warning=FALSE}
+# Calculate accuracy from 4 models
+confusionMatrix(pred1, valida_data$classe)
+confusionMatrix(pred2, valida_data$classe)
+confusionMatrix(pred3, valida_data$classe)
+confusionMatrix(pred4, valida_data$classe)
+# In terms of accuracy, the best performance model is random forest
+```
+
+#### Step 9: Predict outcome levels on the original Testing data set using Random Forest algorithm
+```{r, echo=TRUE, warning=FALSE}
+predictfinal <- predict(mod1, test_data)
+predictfinal
+```
+
+#### Reference:
+[1] Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
